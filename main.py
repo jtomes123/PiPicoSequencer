@@ -45,7 +45,8 @@ keymap[5] = 19
 
 def midi2str(midi):
     note = midi[0]
-    return t1b1[note % 12] + str(int(note / 12) - 2)
+    l = midi[2]
+    return "{} ({})".format(t1b1[note % 12] + str(int(note / 12) - 2), 2 ** l)
 
 
 def prepare_but(pin):
@@ -61,6 +62,7 @@ keyboard = keypad.KeyMatrix(row_pins=(board.GP6, board.GP7, board.GP8, board.GP9
 i2c = io.I2C(board.GP21, board.GP20)
 oled = adafruit_ssd1306.SSD1306_I2C(128, 64, i2c, addr=0x3C)
 uart_midi = io.UART(board.GP4, board.GP5, baudrate=32250)
+usb_midi_out = usb_midi.ports[1]
 
 up = Debouncer(prepare_but(board.GP2))
 down = Debouncer(prepare_but(board.GP3))
@@ -83,6 +85,7 @@ oled.show()
 tempo = 100
 steps = 16
 step = 0
+step_progress = 0
 
 track = 0
 tracks = 4
@@ -97,54 +100,97 @@ data = []
 for i in range(tracks):
     data.append([])
     for j in range(steps):
-        data[i].append((-1, 0))
+        data[i].append((-1, 0, 0))
 
 
 def reset_track(t):
     data[t].clear()
     for j in range(steps):
-        data[t].append((-1, 0))
+        data[t].append((-1, 0, 0))
+
+
+midi_out_channel = 1
+note_on_status = (0x90 | (midi_out_channel-1))
+note_off_status = (0x80 | (midi_out_channel-1))
+
+
+def send_note_on(note, vel):
+    msg = bytearray([note_on_status, note, vel])
+    uart_midi.write(msg)
+    usb_midi_out.write(msg)
+
+
+def send_note_off(note):
+    msg = bytearray([note_off_status, note, 0])
+    uart_midi.write(msg)
+    usb_midi_out.write(msg)
 
 
 print("Initialized...")
 while True:
-    msg = midi.receive()
+    # msg = midi.receive()
     redraw = False
     current_time = time.monotonic()
     up.update()
     down.update()
 
-    if isinstance(msg, NoteOn) and msg.velocity != 0:
-        print(msg)
-        if recording:
-            data[track][step] = (
-                msg.note, 127 if full_velocity else msg.velocity)
-            redraw = True
+    # if isinstance(msg, NoteOn) and msg.velocity != 0:
+    #     print(msg)
+    #     if recording:
+    #         data[track][step] = (
+    #             msg.note, 127 if full_velocity else msg.velocity, 0)
+    #         redraw = True
 
     target_step_time = 60.0 / tempo
 
-    if not step_mode and current_time - last_step_time > target_step_time:
-        for t in data:
-            n = t[step]
+    if not step_mode:
+        if step_progress == 0 and current_time - last_step_time > target_step_time / 16:
+            step_progress += 1
+            for t in data:
+                n = t[step]
 
-            if n[0] != -1:
-                n = NoteOff(n[0], n[1])
-                midi.send(n)
-                midi_hardware.send(n)
+                if n[0] != -1 and n[2] == 4:
+                    send_note_off(n[0])
+        elif step_progress == 1 and current_time - last_step_time > target_step_time / 8:
+            step_progress += 1
+            for t in data:
+                n = t[step]
 
-        last_step_time = current_time
-        redraw = True
-        step += 1
-        if step >= steps:
-            step -= steps
+                if n[0] != -1 and n[2] == 3:
+                    send_note_off(n[0])
+        elif step_progress == 2 and current_time - last_step_time > target_step_time / 4:
+            step_progress += 1
+            for t in data:
+                n = t[step]
 
-        for t in data:
-            n = t[step]
+                if n[0] != -1 and n[2] == 2:
+                    send_note_off(n[0])
+        elif step_progress == 3 and current_time - last_step_time > target_step_time / 2:
+            step_progress += 1
+            for t in data:
+                n = t[step]
 
-            if n[0] != -1:
-                n = NoteOn(n[0], n[1])
-                midi.send(n)
-                midi_hardware.send(n)
+                if n[0] != -1 and n[2] == 1:
+                    send_note_off(n[0])
+        elif current_time - last_step_time > target_step_time:
+            step_progress = 0
+            for t in data:
+                n = t[step]
+
+                if n[0] != -1:
+                    send_note_off(n[0])
+
+            last_step_time = current_time
+            redraw = True
+            step += 1
+            if step >= steps:
+                step -= steps
+
+            for t in data:
+                n = t[step]
+
+                if n[0] != -1:
+                    send_note_on(n[0], n[1])
 
     if up.fell:
         tempo += 1
@@ -160,17 +206,14 @@ while True:
 
         if key < 12:
             if e.pressed:
-                n = NoteOn(key + 60, 127)
-                midi.send(n)
-                midi_hardware.send(n)
+                send_note_on(key + 60, 127)
 
                 if recording:
-                    data[track][step] = (key + 60, 127)
+                    data[track][step] = (key + 60, 127, 0)
                     redraw = True
             else:
-                n = NoteOff(key + 60, 0)
-                midi.send(n)
-                midi_hardware.send(n)
+                send_note_off(key + 60)
+
         elif e.pressed:
             print(key - 11)
             redraw = True
@@ -190,6 +233,14 @@ while True:
                     step += 1
                     if step >= steps:
                         step -= steps
+            if key == 14:
+                if recording:
+                    n, v, l = data[track][step]
+                    l += 1
+                    if l > 4:
+                        l = 0
+
+                    data[track][step] = (n, v, l)
             if key == 15:
                 if not recording:
                     tempo += 1

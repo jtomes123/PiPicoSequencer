@@ -9,6 +9,7 @@ import board
 import busio as io
 import time
 import keypad
+import asyncio
 
 import adafruit_midi
 
@@ -46,7 +47,8 @@ keymap[5] = 19
 def midi2str(midi):
     note = midi[0]
     l = midi[2]
-    return "{} ({})".format(t1b1[note % 12] + str(int(note / 12) - 2), 2 ** l)
+    m = midi[3]
+    return "{} ({}) M{}".format(t1b1[note % 12] + str(int(note / 12) - 2), 2 ** l, m)
 
 
 def prepare_but(pin):
@@ -64,75 +66,108 @@ oled = adafruit_ssd1306.SSD1306_I2C(128, 64, i2c, addr=0x3C)
 uart_midi = io.UART(board.GP4, board.GP5, baudrate=32250)
 usb_midi_out = usb_midi.ports[1]
 
-up = Debouncer(prepare_but(board.GP2))
-down = Debouncer(prepare_but(board.GP3))
-
 midi_channel = 1
-print(usb_midi.ports)
-midi = adafruit_midi.MIDI(
-    midi_in=usb_midi.ports[0],
-    midi_out=usb_midi.ports[1],
-    out_channel=0,
-    in_channel="ALL",
-)
-midi_hardware = adafruit_midi.MIDI(midi_out=uart_midi, out_channel=1)
-
-msg = midi.receive()
 
 oled.fill(0)
 oled.show()
 
-tempo = 100
+tempo = 120
 steps = 16
 step = 0
 step_progress = 0
 
 track = 0
 tracks = 4
+octave = 5
 
 last_step_time = 0
 full_velocity = True
 recording = False
 step_mode = False
+modifier1_pressed = False
+modifier2_pressed = False
 
 data = []
+channels = []
 
 for i in range(tracks):
     data.append([])
+    channels.append(0)
     for j in range(steps):
-        data[i].append((-1, 0, 0))
+        data[i].append((-1, 0, 0, 0))
 
 
 def reset_track(t):
-    data[t].clear()
     for j in range(steps):
-        data[t].append((-1, 0, 0))
+        data[t][j] = ((-1, 0, 0, 0))
 
 
 midi_out_channel = 1
-note_on_status = (0x90 | (midi_out_channel-1))
-note_off_status = (0x80 | (midi_out_channel-1))
+lock = asyncio.Lock()
 
 
-def send_note_on(note, vel):
+def _send_note_on(note, vel, ch=0):
+    note_on_status = (0x90 | (ch))
     msg = bytearray([note_on_status, note, vel])
     uart_midi.write(msg)
     usb_midi_out.write(msg)
 
 
-def send_note_off(note):
+def _send_note_off(note, ch=0):
+    note_off_status = (0x80 | (ch))
     msg = bytearray([note_off_status, note, 0])
     uart_midi.write(msg)
     usb_midi_out.write(msg)
 
 
+async def send_note_on(note, vel, ch=0):
+    note_on_status = (0x90 | (ch))
+    msg = bytearray([note_on_status, note, vel])
+    async with lock:
+        uart_midi.write(msg)
+        usb_midi_out.write(msg)
+
+
+async def send_note_off(note, ch=0):
+    note_off_status = (0x80 | (ch))
+    msg = bytearray([note_off_status, note, 0])
+    async with lock:
+        uart_midi.write(msg)
+        usb_midi_out.write(msg)
+
+
+async def send_note(note, vel, duration, ch=0):
+    await send_note_on(note, vel, ch)
+    await asyncio.sleep_ms(duration)
+    await send_note_off(note, ch)
+
+
+async def send_note_triplet(note, vel, duration, ch=0):
+    await send_note_on(note, vel, ch)
+    await asyncio.sleep_ms(int(duration / 3 * 0.9))
+    await send_note_off(note, ch)
+    await asyncio.sleep_ms(int(duration * 0.1))
+    await send_note_on(note, vel, ch)
+    await asyncio.sleep_ms(int(duration / 3 * 0.9))
+    await send_note_off(note, ch)
+    await asyncio.sleep_ms(int(duration * 0.1))
+    await send_note_on(note, vel, ch)
+    await asyncio.sleep_ms(int(duration / 3 * 0.9))
+    await send_note_off(note, ch)
+    await asyncio.sleep_ms(int(duration * 0.1))
+
+
+def all_notes_off():
+    for i in range(tracks):
+        for j in range(steps):
+            if not data[i][j][0] == -1:
+                asyncio.run(send_note_off(data[i][j][0], channels[i]))
+
+
 print("Initialized...")
 while True:
-    # msg = midi.receive()
     redraw = False
     current_time = time.monotonic()
-    up.update()
-    down.update()
 
     # if isinstance(msg, NoteOn) and msg.velocity != 0:
     #     print(msg)
@@ -141,45 +176,10 @@ while True:
     #             msg.note, 127 if full_velocity else msg.velocity, 0)
     #         redraw = True
 
-    target_step_time = 60.0 / tempo
+    target_step_time = 60.0 / tempo / 4
 
     if not step_mode:
-        if step_progress == 0 and current_time - last_step_time > target_step_time / 16:
-            step_progress += 1
-            for t in data:
-                n = t[step]
-
-                if n[0] != -1 and n[2] == 4:
-                    send_note_off(n[0])
-        elif step_progress == 1 and current_time - last_step_time > target_step_time / 8:
-            step_progress += 1
-            for t in data:
-                n = t[step]
-
-                if n[0] != -1 and n[2] == 3:
-                    send_note_off(n[0])
-        elif step_progress == 2 and current_time - last_step_time > target_step_time / 4:
-            step_progress += 1
-            for t in data:
-                n = t[step]
-
-                if n[0] != -1 and n[2] == 2:
-                    send_note_off(n[0])
-        elif step_progress == 3 and current_time - last_step_time > target_step_time / 2:
-            step_progress += 1
-            for t in data:
-                n = t[step]
-
-                if n[0] != -1 and n[2] == 1:
-                    send_note_off(n[0])
-        elif current_time - last_step_time > target_step_time:
-            step_progress = 0
-            for t in data:
-                n = t[step]
-
-                if n[0] != -1:
-                    send_note_off(n[0])
-
+        if current_time - last_step_time > target_step_time:
             last_step_time = current_time
             redraw = True
             step += 1
@@ -190,12 +190,15 @@ while True:
                 n = t[step]
 
                 if n[0] != -1:
-                    send_note_on(n[0], n[1])
-
-    if up.fell:
-        tempo += 1
-    elif down.fell:
-        tempo -= 1
+                    if n[3] == 1:
+                        asyncio.run(
+                            send_note(n[0], n[1], int(1000 * target_step_time * 1.2), channels[track]))
+                    elif n[3] == 2:
+                        asyncio.run(
+                            send_note_triplet(n[0], n[1], int(1000 * target_step_time), channels[track]))
+                    else:
+                        asyncio.run(
+                            send_note(n[0], n[1], int(1000 * target_step_time / (2 ** n[2])), channels[track]))
 
     while True:
         e = keyboard.events.get()
@@ -206,54 +209,86 @@ while True:
 
         if key < 12:
             if e.pressed:
-                send_note_on(key + 60, 127)
+                asyncio.run(send_note_on(key + octave * 12, 127))
 
                 if recording:
-                    data[track][step] = (key + 60, 127, 0)
+                    data[track][step] = (key + octave * 12, 127, 0, 0)
                     redraw = True
             else:
-                send_note_off(key + 60)
+                asyncio.run(send_note_off(key + octave * 12))
+                pass
 
         elif e.pressed:
             print(key - 11)
             redraw = True
 
             if key == 12:
-                if not step_mode:
-                    recording = not recording
+                if modifier1_pressed:
+                    reset_track(track)
                 else:
-                    step_mode = False
-                    last_step_time = current_time
-            if key == 16:
-                reset_track(track)
-            if key == 13:
+                    if not step_mode:
+                        recording = not recording
+                    else:
+                        step_mode = False
+                        last_step_time = current_time
+            elif key == 13:
                 if not step_mode:
                     step_mode = True
                 else:
                     step += 1
                     if step >= steps:
                         step -= steps
-            if key == 14:
+            elif key == 14:
                 if recording:
-                    n, v, l = data[track][step]
+                    n, v, l, m = data[track][step]
                     l += 1
                     if l > 4:
                         l = 0
 
-                    data[track][step] = (n, v, l)
-            if key == 15:
-                if not recording:
+                    data[track][step] = (n, v, l, m)
+            elif key == 15:
+                if modifier1_pressed:
+                    octave += 1
+                elif modifier2_pressed:
+                    channels[track] += 1
+                elif not recording:
                     tempo += 1
                 else:
                     track += 1
-            if key == 19:
-                if not recording:
+            elif key == 16:
+                modifier1_pressed = True
+            elif key == 17:
+                modifier2_pressed = True
+            elif key == 18:
+                if recording:
+                    n, v, l, m = data[track][step]
+                    m += 1
+                    if m > 2:
+                        m = 0
+
+                    data[track][step] = (n, v, l, m)
+            elif key == 19:
+                if modifier1_pressed:
+                    octave -= 1
+                elif modifier2_pressed:
+                    channels[track] -= 1
+                elif not recording:
                     tempo -= 1
                 else:
                     track -= 1
 
             if key == 15 or key == 19:
-                if not recording:
+                if modifier1_pressed:
+                    if octave < 0:
+                        octave = 9
+                    elif octave > 9:
+                        octave = 0
+                elif modifier2_pressed:
+                    if channels[track] < 0:
+                        channels[track] = 15
+                    elif channels[track] > 15:
+                        channels[track] = 0
+                elif not recording:
                     if tempo < 0:
                         tempo = 0
                     elif tempo > 240:
@@ -263,12 +298,18 @@ while True:
                         track = tracks - 1
                     elif track >= tracks:
                         track = 0
+        elif e.released:
+            if key == 16:
+                modifier1_pressed = False
+            if key == 17:
+                modifier2_pressed = False
 
     if redraw:
         oled.fill(0)
-        oled.text("BPM: {}".format(tempo), 0, 0, 1)
+        oled.text("BPM: {} OCT: {}".format(tempo, octave), 0, 0, 1)
         oled.text("STP: {}/{}".format(step + 1, steps), 0, 10, 1)
-        oled.text("TRK: {}/{}".format(track + 1, tracks), 0, 20, 1)
+        oled.text("TRK: {}/{} (CH{})".format(track + 1,
+                  tracks, channels[track] + 1), 0, 20, 1)
         if data[track][step][0] == -1:
             oled.text("Note: -", 0, 30, 1)
         else:

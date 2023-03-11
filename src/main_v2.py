@@ -305,7 +305,7 @@ async def handle_input():
                             if l > 4:
                                 l = 0
 
-                            set_step_data(track, step, (n, v, l, m))
+                            await set_step_data(track, step, (n, v, l, m))
                 elif key == 15:
                     if modifier1_pressed:
                         octave += 1
@@ -326,7 +326,7 @@ async def handle_input():
                         if m > 2:
                             m = 0
 
-                        set_step_data(track, step, (n, v, l, m))
+                        await set_step_data(track, step, (n, v, l, m))
                 elif key == 19:
                     if modifier1_pressed:
                         octave -= 1

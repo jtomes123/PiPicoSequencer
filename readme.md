@@ -4,13 +4,15 @@
 
 Goal of this project is to provide a functional step sequencer, that would be relatively portable, easy to use and fully hackable.
 
-![Image](graphics/V0.png)
-
-<iframe width="560" height="315" src="https://www.youtube.com/embed/seA91Q_EiBI" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+![Image](graphics/V0.jpeg)
 
 ## Version 0
 
 Version 0 is an experimental prototype with a hand wired keyboard matrix and display, not great but it works pretty well.
+
+### Demo of USB MIDI going to GarageBand on an ipad
+
+[![Thumbnail](graphics/DemoVideo.jpeg)](https://www.youtube.com/watch?v=seA91Q_EiBI)
 
 ### Hardware
 
@@ -74,7 +76,7 @@ The other keys are one octave of piano keys.
 * 7: note mode - one note, double note, triple note
 * 8: Track -, (octave -), [midi channel -]
 
-# TODO:
+## TODO:
 * Improve readme
 * Create schematic
 * Create control layout scheme that is readable
@@ -86,7 +88,7 @@ The other keys are one octave of piano keys.
 * Provide limited amount of prebuilt kits (I will have to figure out the logistics of this one)
 * Update case and model case lid
 
-# Planned additional features:
+## Planned additional features:
 * CV + Gate out for 1 or 2 tracks
 * Sync IN/OUT (Simple enough, hopefully)
 * Save/Load

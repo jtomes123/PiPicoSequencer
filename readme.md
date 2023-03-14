@@ -25,6 +25,12 @@ Version 0 is an experimental prototype with a hand wired keyboard matrix and dis
     * Diodes
     * Resistors (10ohm and 33ohm)
 
+#### Schematic
+
+![Image](graphics/PiPicoSequencerV0_Schematic.png)
+
+There is an error in the schematic and gate in should have reversed connection to the jack!!!
+
 ### Firmware
 
 The newest version of the firmware is src/main_v2.py, I decided to rewrite the firmware to utilize coroutines and improve performance. There was severe performance degradation while writing to the display, so display is now essentially disabled while in play mode and step mode is recommended for editing. The sequencer was tested with E1M1 (also default pattern 1) and it was able to believably reproduce it using usb midi and garageband. Hardware midi was tested with Behringer Model D.

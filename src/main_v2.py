@@ -8,6 +8,10 @@ import time
 import keypad
 import asyncio
 
+_ext_sync_pin = digitalio.DigitalInOut(board.GP22)
+_ext_sync_pin.direction = digitalio.Direction.INPUT
+_ext_sync_pin.pull = digitalio.Pull.UP
+
 t1b1 = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 keymap = dict()
 keymap[9] = 0
@@ -55,8 +59,20 @@ def prepare_but(pin):
 
 
 async def wait(ms):
-    print(int(ms))
     await asyncio.sleep_ms(int(ms))
+
+
+async def wait_for_trigger(interval_ms=1):
+    global _ext_sync_pin, _step_mode
+    previous_value = _ext_sync_pin.value
+    while True:
+        current_value = _ext_sync_pin.value
+        if (not current_value and previous_value) or not _step_mode:
+            print("Ext trigger...")
+            break
+        await asyncio.sleep_ms(interval_ms)
+        previous_value = current_value
+
 
 keyboard = keypad.KeyMatrix(row_pins=(board.GP6, board.GP7, board.GP8, board.GP9), column_pins=(
     board.GP10, board.GP11, board.GP12, board.GP13, board.GP14), columns_to_anodes=False, interval=0.02)
@@ -246,6 +262,8 @@ async def update_display():
             oled.text("BPM: {} NPB: {}".format(
                 tempo, 2 ** notes_per_beat), 0, 0, 1)
             oled.text("PLA", 100, 0, 1)
+            if step_mode:
+                oled.text("ST", 100, 10, 1)
             oled.show()
             _redraw = False
             await asyncio.sleep_ms(100)
@@ -373,7 +391,7 @@ async def sequencer_routine():
         tempo, octave, step, steps, track, tracks, recording, step_mode, current_channel, notes_per_beat = await get_application_data()
         tasks = []
 
-        if step_mode:
+        if recording:
             await asyncio.sleep_ms(33)
             continue
 
@@ -393,7 +411,10 @@ async def sequencer_routine():
                         target_step_time / (2 ** step_data[2]))))
 
         await next_step()
-        tasks.append(wait(target_step_time))
+        if not step_mode:
+            tasks.append(wait(target_step_time))
+        else:
+            tasks.append(wait_for_trigger())
         await asyncio.gather(*tasks)
 
 

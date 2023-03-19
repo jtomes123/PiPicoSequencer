@@ -117,4 +117,4 @@ Version 1.5 is based on the [RP2040-LCD-1.28](https://www.waveshare.com/wiki/RP2
 
 # References
 
-[Cherry Mx Lib with a led](https://github.com/sszczep/Cherry-MX-Breakout-Board)
+[Cherry mx step model](https://github.com/ConstantinoSchillebeeckx/cherry-mx-switch)

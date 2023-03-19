@@ -82,6 +82,15 @@ The other keys are one octave of piano keys.
 * 7: note mode - one note, double note, triple note
 * 8: Track -, (octave -), [midi channel -]
 
+## Version 1.5
+
+Version 1.5 is based on the [RP2040-LCD-1.28](https://www.waveshare.com/wiki/RP2040-LCD-1.28) by waveshare it is an RP2040 based board that is built around a circular lcd screen. There are also additional ports for SYNC, CV+GATE and MIDI right on the pcb in the form of TRS sockets. Most of the parts are or will be surface mount, so it should be mostly JLCPCB assembly friendly.
+
+### PCB Renders
+
+![PCB Top](graphics/V1_PCB.png)
+![PCB Bottom](graphics/V1_PCB_2.png)
+
 ## TODO:
 * Improve readme
 * Create schematic
@@ -105,3 +114,7 @@ The other keys are one octave of piano keys.
     * Bigger to improve readability
     * Faster to remove the ssd1306 bottleneck
     * [Candidate](https://www.aliexpress.com/item/1005004726017957.html?spm=a2g0o.productlist.main.1.73256cc5ZJRNvi&algo_pvid=fc51ccc0-c17f-4f8f-9461-e13a99c78fd2&algo_exp_id=fc51ccc0-c17f-4f8f-9461-e13a99c78fd2-0&pdp_ext_f=%7B%22sku_id%22%3A%2212000030244707593%22%7D&pdp_npi=3%40dis%21USD%214.34%213.82%21%21%21%21%21%402100bbf516785644742137121d06f5%2112000030244707593%21sea%21CZ%21740805232&curPageLogUid=Dx2WB20pU3aQ)
+
+# References
+
+[Cherry Mx Lib with a led](https://github.com/sszczep/Cherry-MX-Breakout-Board)
